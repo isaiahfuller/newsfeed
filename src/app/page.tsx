@@ -1,10 +1,11 @@
 "use client";
 
+import { AccountGate, FeedSettings } from "@/app/account";
 import { Player, type PlayerRef } from "@remotion/player";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultArticle, NewsArticle, NewsIntro } from "@/remotion/NewsIntro";
 
-type FeedArticle = NewsArticle & { id: string; url?: string };
+type FeedArticle = NewsArticle & { id: string; url?: string; viewed?: boolean };
 type PreparedNarration = { article: FeedArticle; audioUrl: string; durationInFrames: number };
 const fps = 30;
 const configuredRefreshInterval = Number(process.env.NEXT_PUBLIC_FEED_REFRESH_MS || 300_000);
@@ -24,11 +25,15 @@ const toPlaybackArticle = (article: FeedArticle): FeedArticle => ({
 });
 
 export default function Home() {
+  return <AccountGate>{(email) => <Studio email={email} />}</AccountGate>;
+}
+
+function Studio({ email }: { email: string }) {
   const [article, setArticle] = useState<FeedArticle>({ ...defaultArticle, id: "demo" });
   const [audioUrl, setAudioUrl] = useState<string>();
   const [durationInFrames, setDurationInFrames] = useState(450);
   const [articles, setArticles] = useState<FeedArticle[]>([]);
-  const [status, setStatus] = useState("Load a configured feed to begin.");
+  const [status, setStatus] = useState("Add feeds to your account to begin.");
   const [isGenerating, setIsGenerating] = useState(false);
   const playerRef = useRef<PlayerRef>(null);
   const hasAutoplayedRef = useRef(false);
@@ -96,10 +101,18 @@ export default function Home() {
     void generateNarration(selectedArticle);
   }, [generateNarration]);
 
+  const markViewed = useCallback(async (id: string) => {
+    try {
+      const response = await fetch("/api/viewed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ articleId: id }) });
+      if (!response.ok) throw new Error("Viewing history could not be saved. Please sign in again if your session expired.");
+      setArticles((current) => current.map((item) => item.id === id ? { ...item, viewed: true } : item));
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Viewing history could not be saved."); }
+  }, []);
+
   const playNextArticle = useCallback(() => {
     if (isGenerating) return;
     const currentIndex = articles.findIndex((item) => item.id === article.id);
-    const nextArticle = articles[currentIndex + 1];
+    const nextArticle = articles.slice(currentIndex + 1).find((item) => !item.viewed);
     if (!nextArticle) {
       setStatus("Playlist complete. Waiting for the next feed refresh.");
       return;
@@ -118,18 +131,19 @@ export default function Home() {
 
   const loadArticles = useCallback(async (autoplay = false) => {
     setStatus("Loading feeds…");
-    const response = await fetch("/api/articles");
-    const result = await response.json();
-    if (!response.ok) return setStatus(result.error ?? "Feeds could not be loaded.");
-    setArticles((current) => current.length === 0
-      ? result.articles
-      : [...current, ...result.articles.filter((candidate: FeedArticle) => !current.some((item) => item.id === candidate.id))]);
-    if (autoplay && !hasAutoplayedRef.current && result.articles.length) {
-      hasAutoplayedRef.current = true;
-      selectArticle(result.articles[0]);
-      return;
-    }
-    setStatus(result.articles.length ? "Feed updated. Choose an article to play." : "No feeds configured yet.");
+    try {
+      const response = await fetch("/api/articles");
+      const result = await response.json();
+      if (!response.ok) return setStatus(result.error ?? "Feeds could not be loaded.");
+      setArticles(result.articles);
+      const firstUnviewed = result.articles.find((item: FeedArticle) => !item.viewed);
+      if (autoplay && !hasAutoplayedRef.current && firstUnviewed) {
+        hasAutoplayedRef.current = true;
+        selectArticle(firstUnviewed);
+        return;
+      }
+      setStatus(result.articles.length ? "Feed updated. Choose an article to play." : "No articles available. Add or check your feeds below.");
+    } catch { setStatus("Feeds could not be loaded. Please try again."); }
   }, [selectArticle]);
 
   useEffect(() => {
@@ -144,30 +158,31 @@ export default function Home() {
   useEffect(() => {
     if (!audioUrl || isGenerating) return;
     const currentIndex = articles.findIndex((item) => item.id === article.id);
-    const nextArticle = articles[currentIndex + 1];
+    const nextArticle = articles.slice(currentIndex + 1).find((item) => !item.viewed);
     if (nextArticle) void prepareNarration(nextArticle);
   }, [article.id, articles, audioUrl, isGenerating, prepareNarration]);
 
   useEffect(() => {
     const player = playerRef.current;
     if (!player || !audioUrl) return;
-    const onEnded = () => playNextArticle();
+    const onEnded = () => { void markViewed(article.id); playNextArticle(); };
     player.addEventListener("ended", onEnded);
     return () => player.removeEventListener("ended", onEnded);
-  }, [audioUrl, playNextArticle]);
+  }, [article.id, audioUrl, markViewed, playNextArticle]);
 
   return (
     <main>
       <section className="hero">
-        <p className="eyebrow">Newsfeed Studio</p>
+        <p className="eyebrow">Newsfeed Studio · {email}</p>
         <h1>Feeds to news video.</h1>
         <p className="intro">Select an RSS or Bluesky story to automatically generate its OmniVoice narration and preview the bulletin.</p>
       </section>
       <div className="studio">
         <aside className="editor">
+          <FeedSettings onSaved={() => { setArticles([]); hasAutoplayedRef.current = false; void loadArticles(true); }} />
           <button onClick={() => void loadArticles()}>Refresh feeds</button>
           <p className="status" aria-live="polite">{status}</p>
-          <div className="articles">{articles.map((item) => <button className="article" key={item.id} disabled={isGenerating} onClick={() => selectArticle(item)}><strong>{item.title}</strong><span>{item.source} · {item.publishedAt}</span></button>)}</div>
+          <div className="articles">{articles.map((item) => <button className="article" key={item.id} disabled={isGenerating} onClick={() => selectArticle(item)}><strong>{item.viewed ? "Viewed · " : ""}{item.title}</strong><span>{item.source} · {item.publishedAt}</span></button>)}</div>
           <p className="disclosure">Narration is AI-generated by OmniVoice.</p>
         </aside>
         <Player ref={playerRef} key={audioUrl ?? article.id} component={NewsIntro} inputProps={{ article: { ...article, audioUrl } }} durationInFrames={durationInFrames} compositionWidth={1920} compositionHeight={1080} fps={fps} controls style={{ width: "100%", borderRadius: 16, overflow: "hidden" }} />

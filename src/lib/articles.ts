@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { XMLParser } from "fast-xml-parser";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import type { NewsArticle } from "@/remotion/NewsIntro";
 
-export type FeedArticle = NewsArticle & { id: string; url?: string };
+export type FeedArticle = NewsArticle & { id: string; url?: string; publishedTimestamp: number | null };
 
 const value = (input: unknown): string => {
   if (typeof input === "string") return input;
@@ -12,6 +13,12 @@ const value = (input: unknown): string => {
 };
 const list = (input: unknown) => (Array.isArray(input) ? input : input ? [input] : []);
 const clean = (input: string) => input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+const publishedTimestamp = (input: string) => {
+  const timestamp = Date.parse(input);
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
+const itemPublishedAt = (item: Record<string, unknown>) => value(item.pubDate) || value(item.published) || value(item["dc:date"]) || value(item.updated);
+
 const formatPublishedAt = (input: string) => {
   const date = new Date(input);
   if (Number.isNaN(date.getTime())) return "RECENTLY";
@@ -38,23 +45,27 @@ async function extractArticle(url?: string) {
 }
 
 export async function getRssArticles(url: string): Promise<FeedArticle[]> {
-  const response = await fetch(url, { next: { revalidate: 300 } });
+  const response = await fetch(url, { signal: AbortSignal.timeout(12_000), next: { revalidate: 300 } });
   if (!response.ok) throw new Error(`RSS request failed: ${response.status}`);
   const parsed = new XMLParser({ ignoreAttributes: false }).parse(await response.text());
   const channel = parsed.rss?.channel ?? parsed.feed ?? {};
   const source = value(channel.title) || new URL(url).hostname;
-  return Promise.all(list(channel.item ?? channel.entry).slice(0, 10).map(async (item: Record<string, unknown>, index) => {
+  return Promise.all(list(channel.item ?? channel.entry)
+    .sort((a: Record<string, unknown>, b: Record<string, unknown>) =>
+      ((publishedTimestamp(itemPublishedAt(b)) ?? -Infinity) - (publishedTimestamp(itemPublishedAt(a)) ?? -Infinity)) || 0)
+    .slice(0, 10).map(async (item: Record<string, unknown>) => {
     const url = itemUrl(item.link);
     const feedContent = clean(value(item["content:encoded"]) || value(item.content) || value(item.summary) || value(item.description));
     const fullText = feedContent.length > 800 ? feedContent : await extractArticle(url);
     const narration = fullText || feedContent;
     return {
-      id: `rss-${url}-${index}`,
+      id: `rss-${createHash("sha256").update(`${source}:${value(item.guid) || value(item.id) || url || `${value(item.title)}:${value(item.pubDate) || value(item.published)}`}`).digest("hex")}`,
       title: clean(value(item.title)) || "Untitled story",
       body: (narration || "No article text was available from this feed.").slice(0, 700),
       narration,
       source,
-      publishedAt: formatPublishedAt(value(item.pubDate) || value(item.published)),
+      publishedAt: formatPublishedAt(itemPublishedAt(item)),
+      publishedTimestamp: publishedTimestamp(itemPublishedAt(item)),
       url,
     };
   }));
@@ -64,7 +75,7 @@ export async function getBlueskyArticles(handle: string): Promise<FeedArticle[]>
   const url = new URL("https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed");
   url.searchParams.set("actor", handle);
   url.searchParams.set("limit", "10");
-  const response = await fetch(url, { next: { revalidate: 300 } });
+  const response = await fetch(url, { signal: AbortSignal.timeout(12_000), next: { revalidate: 300 } });
   if (!response.ok) throw new Error(`Bluesky request failed: ${response.status}`);
   const data = await response.json() as { feed?: Array<{ post: {
     uri: string;
@@ -93,6 +104,7 @@ export async function getBlueskyArticles(handle: string): Promise<FeedArticle[]>
       narration,
       source: post.author.displayName || `@${post.author.handle}`,
       publishedAt: formatPublishedAt(post.record.createdAt || ""),
+      publishedTimestamp: publishedTimestamp(post.record.createdAt || ""),
       url,
     };
   }));

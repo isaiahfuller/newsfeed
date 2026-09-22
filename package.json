@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "remotion:studio": "remotion studio src/remotion/index.ts",
-    "remotion:render": "remotion render src/remotion/index.ts NewsIntro out/news-intro.mp4"
+    "remotion:render": "remotion render src/remotion/index.ts NewsIntro out/news-intro.mp4",
+    "test": "npm run build && node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -25,12 +26,15 @@
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/jsdom": "^30.0.0",
-    "@types/node": "^20",
+    "@types/node": "^24.13.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }

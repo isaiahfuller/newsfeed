@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { currentUser, sameOrigin } from "@/lib/auth";
 
 export async function POST(request: Request) {
-  const { text } = await request.json() as { text?: unknown };
+  if (!sameOrigin(request)) return NextResponse.json({ error: "Invalid origin." }, { status: 403 });
+  if (!await currentUser()) return NextResponse.json({ error: "Sign in to generate narration." }, { status: 401 });
+  const { text } = await request.json().catch(() => ({})) as { text?: unknown };
   if (typeof text !== "string" || !text.trim()) return NextResponse.json({ error: "Article text is required." }, { status: 400 });
   if (!process.env.OMNIVOICE_API_URL) return NextResponse.json({ error: "Set OMNIVOICE_API_URL in .env.local to your OmniVoice server." }, { status: 503 });
   try {
