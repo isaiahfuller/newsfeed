@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #08111f; color: #f5f7fb; font-family: Arial, Helvetica, sans-serif; }
+main { width: min(1280px, calc(100% - 40px)); margin: 0 auto; padding: 72px 0; }
+.hero { margin-bottom: 32px; }
+.eyebrow { color: #56d6ff; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+h1 { font-size: clamp(2.5rem, 7vw, 5rem); margin: 0.25rem 0 1rem; }
+.intro { color: #a9b5c7; font-size: 1.15rem; }
+.studio { align-items: start; display: grid; gap: 32px; grid-template-columns: minmax(280px, .78fr) minmax(0, 1.4fr); }
+.editor { background: #101d2e; border: 1px solid #263c57; border-radius: 16px; display: grid; gap: 16px; padding: 24px; }
+button { background: #56d6ff; border: 0; border-radius: 8px; color: #04121e; cursor: pointer; font-weight: 800; padding: 13px; text-align: left; }
+button:disabled { cursor: wait; opacity: .65; }
+.status, .disclosure { color: #a9b5c7; font-size: .85rem; margin: 0; }
+.disclosure { color: #56d6ff; }
+.articles { display: grid; gap: 8px; max-height: 340px; overflow: auto; }
+button.article { background: #07111e; border: 1px solid #395673; color: #eff6ff; display: grid; gap: 7px; font-size: .85rem; }
+button.article span { color: #9cb4cc; font-size: .72rem; }
+@media (max-width: 850px) { .studio { grid-template-columns: 1fr; } }
