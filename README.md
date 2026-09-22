@@ -16,7 +16,7 @@ Open [http://localhost:3000](http://localhost:3000) to preview the page and vide
 
 Copy `.env.example` to `.env.local`, then set comma-separated `RSS_FEEDS` URLs and/or `BLUESKY_HANDLES`. The app uses Bluesky's public profile-feed endpoint; it needs no account credentials.
 
-Set `OMNIVOICE_API_URL` to the base URL of your OmniVoice server. The app requests its `/v1/audio/speech` endpoint with the article text, then proxies the returned audio straight to the browser preview. Set `OMNIVOICE_API_KEY` only if your server expects a bearer token.
+Set `OMNIVOICE_API_URL` to the base URL of your [OmniVoice server](https://github.com/maemreyo/omnivoice-server). The app requests its `/v1/audio/speech` endpoint with the article text, then proxies the returned audio straight to the browser preview. Set `OMNIVOICE_API_KEY` only if your server expects a bearer token.
 
 RSS items use their full embedded content where available. Otherwise, the app fetches the item’s linked HTML page and extracts its main article text before requesting narration. Bluesky posts are handled the same way: an attached external card, rich-text link, or URL in the post is followed and its article body is used when extraction succeeds. Selecting a feed item begins narration automatically.
 
